@@ -1,0 +1,4 @@
+names_generator==0.2.0
+pandas==2.3.1
+Requests==2.32.4
+python-dotenv==1.1.1
