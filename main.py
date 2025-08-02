@@ -11,7 +11,9 @@ PORT = os.getenv("PORT")
 DEFAULT_PATH = os.getenv("DEFAULT_PATH")
 TEMP_PATH = os.getenv("TEMP_PATH")
 DF_PATH = os.getenv("DF_PATH")
-
+LOGIN = os.getenv("LOGIN")
+PASSWORD = os.getenv("PASSWORD")
+ 
 items_parser = ItemsParser(HOST, PORT, DEFAULT_PATH, TEMP_PATH, DF_PATH)
 
-items_parser.main("", "", "phones")
+items_parser.main(LOGIN, PASSWORD, "phones")

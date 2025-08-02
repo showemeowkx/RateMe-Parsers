@@ -1,38 +1,91 @@
 import requests
 import secrets
+import logging
+import sys
 from names_generator import generate_name
 
-credentials_list = []
+logging.basicConfig(level=logging.INFO)
 
-def generate_data():
-    credentials = generate_name(style='capital').split(" ")
-    while credentials in credentials_list:
-        print("ALREADY EXISTS")
-        credentials = generate_name(style='capital').split(" ")
-    credentials_list.append(credentials)
-    name = credentials[0]
-    surname = credentials[1]
-    username = credentials[0].lower() + "_" + credentials[1].lower()
-    email = username.replace("_", "") + "@gmail.com"
-    password = secrets.token_urlsafe(20)
-    data = {
-        "name": name,
-        "surname": surname,
-        "username": username,
-        "email": email,
-        "password": password
-    }
-    return data
+class UserParser :
+    def __init__(self, host, port):
+        self.base_url = f"http://{host}:{port}/auth/"
+        self.credentials_list = []
 
-def sign_up(data, url):
-    response = requests.post(url, data=data)
-    print("Sign up status code:", response.status_code)
-    print("Response:", response.text)
+    def generate_data(self):
+        logging.info("Generating user data...")
+        credentials = generate_name(style='capital')
 
-def sign_in(username, password, url):
-    data = {'login': username, 'password': password}
-    response = requests.post(url, data=data)
-    token = response.json()['accessToken']
-    output = {'token': token, 'status_code': response.status_code}
-    print("Sign in status code:", output['status_code'])
-    return output
+        while credentials in self.credentials_list or len(credentials) > 20:
+            logging.warning("Generated credentials are invalid. Retrying...")
+            credentials = generate_name(style='capital')
+
+        self.credentials_list.append(credentials)
+        credentials = credentials.split(" ")
+
+        name = credentials[0]
+        surname = credentials[1]
+        username = name.lower() + "_" + surname.lower()
+        email = username.replace("_", "") + "@gmail.com"
+        password = secrets.token_urlsafe(20)
+
+        return {
+            "name": name,
+            "surname": surname,
+            "username": username,
+            "email": email,
+            "password": password
+        }
+
+    def sign_up(self, data):
+        SIGN_UP_URL = self.base_url + "signup"
+        logging.info("Signing up...")
+
+        try:
+            response = requests.post(SIGN_UP_URL, data=data)
+            status = response.status_code
+            logging.info(f"Sign in response status code: {status}")
+
+            if status >= 300:
+                logging.error("Failed to sign up: Bad response received from server")
+                logging.info("Response: %s", response.text)
+                logging.info("Exiting with 0...")
+                sys.exit(0)
+        except Exception as e:
+            logging.error("Failed to sign up: %s", e)
+            logging.info("Exiting with 1...")
+            sys.exit(1)
+
+    def sign_in(self, login, password):
+        SIGN_IN_URL = self.base_url + "signin"
+        form_data = {'login': login, 'password': password}
+        logging.info(f"Signing in... [login: {login}, password: {password}]")
+
+        try:
+            response = requests.post(SIGN_IN_URL, data=form_data)
+            status = response.status_code
+            logging.info(f"Sign in response status code: {status}")
+
+            if status >= 300:
+                logging.error("Failed to sign in: Bad response received from server")
+                logging.info("Response: %s", response.text)
+                logging.info("Exiting with 0...")
+                sys.exit(0)
+
+            response_json = response.json()
+            logging.info("Signed in and received access token successfully.")
+
+            return response_json['accessToken']
+        except Exception as e:
+            logging.error("Failed to sign in: %s", e)
+            logging.info("Exiting with 1...")
+            sys.exit(1)
+
+    def create_user(self):
+        logging.info('Creating a user...')
+
+        user_data = self.generate_data()
+        self.sign_up(user_data)
+        token = self.sign_in(user_data['username'], user_data['password'])
+
+        return token
+

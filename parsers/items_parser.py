@@ -4,18 +4,18 @@ import uuid
 import requests
 import logging
 import sys
+from parsers.user_parser import UserParser
 
 logging.basicConfig(level=logging.INFO)
 
 class ItemsParser:
     def __init__(self, host, port, default_path, temp_path, df_path):
-        self.base_url = f"http://{host}:{port}/"
+        self.base_url = f"http://{host}:{port}/items/"
         self.default_path = default_path
         self.temp_path = temp_path
         self.df_path = df_path
         self.df = None
-        self.token = None
-        self.user_parser = None
+        self.user_parser = UserParser(host, port)
         self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
             "Referer": "https://hotline.ua/",
             "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
@@ -40,33 +40,6 @@ class ItemsParser:
             logging.info("Dataframe initialized successfully.")
         except Exception as e:
             logging.error("Failed to initialize dataframe: %s", e)
-            logging.info("Exiting with 1...")
-            sys.exit(1)
-
-    def sign_in(self, login, password):
-        SIGN_IN_URL = self.base_url + "auth/signin"
-        form_data = {'login': login, 'password': password}
-        logging.info(f"Signing in... [login: {login}, password: {password}]")
-
-        try:
-            response = requests.post(SIGN_IN_URL, data=form_data)
-            status = response.status_code
-            logging.info(f"Sign in response status code: {status}")
-
-            if status >= 300:
-                logging.error("Failed to sign in: Bad response received from server")
-                logging.info("Response: %s", response.text)
-                logging.info("Exiting with 0...")
-                sys.exit(1)
-
-            response_json = response.json()
-
-            self.token = response_json['accessToken']
-            self.headers["Authorization"] = f"Bearer {self.token}"
-
-            logging.info("Signed in and received access token successfully.")
-        except Exception as e:
-            logging.error("Failed to sign in: %s", e)
             logging.info("Exiting with 1...")
             sys.exit(1)
 
@@ -125,7 +98,7 @@ class ItemsParser:
             sys.exit(1)
 
     def add_items(self, item_category):
-        ADD_URL = self.base_url + "/items/"
+        ADD_URL = self.base_url
         item_names = []
 
         for _, row in self.df.iterrows():
@@ -155,7 +128,8 @@ class ItemsParser:
 
         self.init_temp()
         self.init_df()
-        self.sign_in(login, password)
+        token = self.user_parser.sign_in(login, password)
+        self.headers["Authorization"] = f"Bearer {token}"
         self.add_items(item_category)
 
         logging.info("Items parsing process finished successfully.")
