@@ -50,6 +50,8 @@ class UserParser :
                 logging.info("Response: %s", response.text)
                 logging.info("Exiting with 0...")
                 sys.exit(0)
+
+            logging.info("Signed up successfully.")
         except Exception as e:
             logging.error("Failed to sign up: %s", e)
             logging.info("Exiting with 1...")
