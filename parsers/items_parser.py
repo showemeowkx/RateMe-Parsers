@@ -2,99 +2,160 @@ import pandas as pd
 import os
 import uuid
 import requests
+import logging
+import sys
 
-# PARSE ABSOLUTE PATHS HERE
-default_abs_path = ""
-temp_abs_path = ""
-df_path = ""
+logging.basicConfig(level=logging.INFO)
 
-try:
-    os.mkdir(temp_abs_path)
-    print(f"Directory '{temp_abs_path}' created successfully.")
-except FileExistsError:
-    print(f"Directory '{temp_abs_path}' already exists.")
+class ItemsParser:
+    def __init__(self, host, port, default_path, temp_path, df_path):
+        self.base_url = f"http://{host}:{port}/"
+        self.default_path = default_path
+        self.temp_path = temp_path
+        self.df_path = df_path
+        self.df = None
+        self.token = None
+        self.user_parser = None
+        self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
+            "Referer": "https://hotline.ua/",
+            "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5"}
 
-df = pd.read_csv(df_path)
+    def init_temp(self):
+        logging.info("Creating temporary directory...")
+        try:
+            os.mkdir(self.default_path)
+            logging.info("Temporary directory created successfully.")
+        except FileExistsError:
+            logging.info("Temporary directory already exists.")
+        except Exception as e:
+            logging.error("Failed to create temporary directory: %s", e)
+            logging.info("Exiting with 1...")
+            sys.exit(1)
 
-sign_in_url = "http://localhost:3001/auth/signin"
+    def init_df(self):
+        logging.info("Initializing dataframe...")
+        try:
+            self.df = pd.read_csv(self.df_path)
+            logging.info("Dataframe initialized successfully.")
+        except Exception as e:
+            logging.error("Failed to initialize dataframe: %s", e)
+            logging.info("Exiting with 1...")
+            sys.exit(1)
 
-# PARSE CREDENTIALS HERE
-form_data = {'login': '', 'password': ''}
+    def sign_in(self, login, password):
+        SIGN_IN_URL = self.base_url + "auth/signin"
+        form_data = {'login': login, 'password': password}
+        logging.info(f"Signing in... [login: {login}, password: {password}]")
 
-response = requests.post(sign_in_url, data=form_data)
+        try:
+            response = requests.post(SIGN_IN_URL, data=form_data)
+            status = response.status_code
+            logging.info(f"Sign in response status code: {status}")
 
-print("Sign in status: ", response.status_code)
-response_json = response.json()
-token = response_json['accessToken']
+            if status >= 300:
+                logging.error("Failed to sign in: Bad response received from server")
+                logging.info("Response: %s", response.text)
+                logging.info("Exiting with 0...")
+                sys.exit(1)
 
-add_url = "http://localhost:3001/items/"
-headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
-    "Referer": "https://hotline.ua/",
-    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5","Authorization": "Bearer {}".format(token)}
+            response_json = response.json()
 
-def get_image(url, headers, default_path, temp_path):
-    try:
-        img_response = requests.get(url, headers=headers)
-        img_response.raise_for_status()
-        content = img_response.content
-        img_filename = f"image{uuid.uuid4()}.jpg"
-        img_path = os.path.join(temp_path, img_filename)
-        with open(img_path, "wb") as file:
-            file.write(content)
-        print("LOADED!")
-        return img_path
-    except:
-        return default_path
+            self.token = response_json['accessToken']
+            self.headers["Authorization"] = f"Bearer {self.token}"
+
+            logging.info("Signed in and received access token successfully.")
+        except Exception as e:
+            logging.error("Failed to sign in: %s", e)
+            logging.info("Exiting with 1...")
+            sys.exit(1)
+
+    def get_image(self, url):
+        logging.info("Loading an image...")
+        try:
+            img_response = requests.get(url, headers=self.headers)
+            img_response.raise_for_status()
+            content = img_response.content
+            img_filename = f"image{uuid.uuid4()}.jpg"
+            img_path = os.path.join(self.temp_path, img_filename)
+            with open(img_path, "wb") as file:
+                file.write(content)
+            logging.info("Image loaded successfully. Saved as <%s>", img_filename)
+            return img_path
+        except:
+            logging.warning("Failed to load an image. Returning default one...")
+            return self.default_path
     
-def send_post(url, headers, image_path, form_data):
-    try:
-        with open(image_path, "rb") as file:
-            files = {
-                "file": (os.path.basename(image_path), file, "image/jpeg")
-            }
-            data = form_data
-            response = requests.post(url, files=files, data=data, headers=headers)
-            print("Status code:", response.status_code)
-            print("Response:", response.text)
-        os.remove(image_path)
-    except Exception as e:
-        print(f"Error sending image: {e}")
+    def send_post(self, url, image_path, form_data):
+        logging.info(f"Sending POST request to <{url}>...")
+        try:
+            with open(image_path, "rb") as file:
+                files = {
+                    "file": (os.path.basename(image_path), file, "image/jpeg")
+                }
+                response = requests.post(url, files=files, data=form_data, headers=self.headers)
+                status = response.status_code
+                logging.info(f"Add item response status code: {status}")
 
-def get_ratings(df):
-    item_dict = {}
-    for _, row in df.iterrows():
-        if row['name'] not in item_dict:
-            item_dict[row['name']] = {'rating': 1 if row['recommend'] == 'рекомендує цей товар' else 0, 'count': 1}
-        else:
-            if row['recommend'] == 'рекомендує цей товар':
-                item_dict[row['name']]['rating'] += 1
-                item_dict[row['name']]['count'] += 1
-            else: item_dict[row['name']]['count'] += 1
-        
-    return item_dict
+                if status >= 300:
+                    logging.error("Failed to add an item: Bad response received from server")
+                    logging.info("Response: %s", response.text)
 
-def calc_rating(item_dict):
-    item_rating = {}
+                    cont = input("Continue operations?\n[Y] - Yes\n[N] - No\n").lower()
+                    if cont != "y":
+                        if cont != "n":
+                            logging.warning("Invalid input, proceeding exit...")
+                        logging.info("Exiting with 0...")
+                        sys.exit(0)
 
-    for name, data in item_dict.items():
-        item_rating[name] = round((data['rating'] / data['count'])*100, 2)
-    
-    return item_rating
+                    logging.info("Continuing...")
 
-used_urls = []
-item_rating = calc_rating(get_ratings(df))
+                else:
+                    logging.info("Item added successfully.")
 
-for _, row in df.iterrows():
-    image_url = row['pic']
-    if image_url not in used_urls:
-        used_urls.append(image_url)
-        image_load = get_image(image_url, headers, default_abs_path, temp_abs_path)
-    else: print(f'[USED!] url: ${image_url}')
+            if image_path != self.default_path:
+                logging.info("Removing image from temp directory...")
+                try:
+                    os.remove(image_path)
+                except Exception as e:
+                    logging.warning("Failed to remove an image: %s", e)
+        except Exception as e:
+            logging.error("Failed to add an item: %s", e)
+            logging.info("Exiting with 1...")
+            sys.exit(1)
 
-    form_data = {'category': 'phones', 'name': row['name'], 'link': row['link'], 'description': row['description'], "rating": item_rating[row['name']]}
+    def add_items(self, item_category):
+        ADD_URL = self.base_url + "/items/"
+        item_names = []
 
-    send_post(add_url, headers, image_load, form_data)  
-    print("Add item status: ",response.status_code)
+        for _, row in self.df.iterrows():
+            logging.info("Adding an item...")
 
-os.rmdir(temp_abs_path)
+            if row['name'] not in item_names:
+                item_names.append(row['name'])
+
+                image_url = row['pic']
+                image_load = self.get_image(image_url)
+                form_data = {'categorySlug': item_category, 'name': row['name'], 'description': row['description']}
+
+                self.send_post(ADD_URL, image_load, form_data)  
+            else:
+                logging.info("Found an item with the same name. Ignoring...")
+
+        logging.info("All items added successfully.")
+        logging.info("Removing temp directory...")
+
+        try:
+            os.rmdir(self.temp_path)
+        except Exception as e:
+            logging.warning("Failed to remove temp directory: %s", e)
+
+    def main(self, login, password, item_category):
+        logging.info("Startin items parsing process...")
+
+        self.init_temp()
+        self.init_df()
+        self.sign_in(login, password)
+        self.add_items(item_category)
+
+        logging.info("Items parsing process finished successfully.")
