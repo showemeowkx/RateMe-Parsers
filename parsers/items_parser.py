@@ -3,17 +3,19 @@ import os
 import uuid
 import requests
 import logging
+import json
 import sys
 from parsers.user_parser import UserParser
 
 logging.basicConfig(level=logging.INFO)
 
 class ItemsParser:
-    def __init__(self, host, port, default_path, temp_path, df_path):
+    def __init__(self, host, port, default_path, json_path, temp_path, df_path):
         self.base_url = f"http://{host}:{port}/items/"
         self.default_path = default_path
         self.temp_path = temp_path
         self.df_path = df_path
+        self.json_path = json_path
         self.df = None
         self.user_parser = UserParser(host, port)
         self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
@@ -24,7 +26,7 @@ class ItemsParser:
     def init_temp(self):
         logging.info("Creating temporary directory...")
         try:
-            os.mkdir(self.default_path)
+            os.mkdir(self.temp_path)
             logging.info("Temporary directory created successfully.")
         except FileExistsError:
             logging.info("Temporary directory already exists.")
@@ -43,6 +45,22 @@ class ItemsParser:
             logging.info("Exiting with 1...")
             sys.exit(1)
 
+    def init_json(self):
+        if os.path.exists(self.json_path):
+            logging.info("JSON file exists. Overwriting...")
+        else:
+            logging.info("Creating a JSON file...")
+
+        try:
+            with open(self.json_path, "w") as f:
+                json.dump({}, f)
+
+            logging.info("JSON file initialized successfully.")
+        except Exception as e:
+            logging.error("Failed to initialize JSON: %s", e)
+            logging.info("Exiting with 1...")
+            sys.exit(1)
+
     def get_image(self, url):
         logging.info("Loading an image...")
         try:
@@ -58,6 +76,21 @@ class ItemsParser:
         except:
             logging.warning("Failed to load an image. Returning default one...")
             return self.default_path
+        
+    def add_to_json(self, data):
+        logging.info("Adding data to JSON...")
+        try:
+            with open(self.json_path, 'r') as f:
+                json_data = json.load(f)
+
+            json_data.update(data)
+
+            with open(self.json_path, 'w') as f:
+                json.dump(json_data, f, indent=4)
+        except Exception as e:
+            logging.error("Failed to add data to JSON: %s", e)
+            logging.info("Exiting with 1...")
+            sys.exit(1)
     
     def send_post(self, url, image_path, form_data):
         logging.info(f"Sending POST request to <{url}>...")
@@ -84,6 +117,10 @@ class ItemsParser:
                     logging.info("Continuing...")
 
                 else:
+                    response_json = response.json()
+                    item_id = response_json['itemId']
+                    self.add_to_json({form_data['name']: item_id})
+
                     logging.info("Item added successfully.")
 
             if image_path != self.default_path:
@@ -124,10 +161,11 @@ class ItemsParser:
             logging.warning("Failed to remove temp directory: %s", e)
 
     def main(self, login, password, item_category):
-        logging.info("Startin items parsing process...")
+        logging.info("Starting items parsing process...")
 
         self.init_temp()
         self.init_df()
+        self.init_json()
         token = self.user_parser.sign_in(login, password)
         self.headers["Authorization"] = f"Bearer {token}"
         self.add_items(item_category)
