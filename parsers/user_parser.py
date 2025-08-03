@@ -43,15 +43,16 @@ class UserParser :
         try:
             response = requests.post(SIGN_UP_URL, data=data)
             status = response.status_code
-            logging.info(f"Sign in response status code: {status}")
+            logging.info(f"Sign up response status code: {status}")
 
             if status >= 300:
-                logging.error("Failed to sign up: Bad response received from server")
+                logging.warning("Failed to sign up: Bad response received from server")
                 logging.info("Response: %s", response.text)
-                logging.info("Exiting with 0...")
-                sys.exit(0)
+                logging.info("Retrying...")
+            else:
+                logging.info("Signed up successfully.")
 
-            logging.info("Signed up successfully.")
+            return status
         except Exception as e:
             logging.error("Failed to sign up: %s", e)
             logging.info("Exiting with 1...")
@@ -86,7 +87,12 @@ class UserParser :
         logging.info('Creating a user...')
 
         user_data = self.generate_data()
-        self.sign_up(user_data)
+        status = self.sign_up(user_data)
+
+        while status != 201:
+            user_data = self.generate_data()
+            status = self.sign_up(user_data)
+
         token = self.sign_in(user_data['username'], user_data['password'])
 
         return token
