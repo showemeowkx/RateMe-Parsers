@@ -162,11 +162,6 @@ class ReviewsParser():
     def main(self, chance):
         logging.info("Starting reviews parsing process...")
 
-        if chance not in range(1, 11):
-            logging.error("Wrong <chance> value. Should be between 1 and 10.")
-            logging.info("Exiting with 1...")
-            sys.exit(1)
-
         self.init_df()
         self.init_json()
         self.add_reviews(chance)
