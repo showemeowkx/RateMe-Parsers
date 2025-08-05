@@ -1,22 +1,25 @@
 import requests
 import secrets
-import logging
 import sys
+import os
 from names_generator import generate_name
 
-logging.basicConfig(level=logging.INFO)
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from logger import Logger
 
 class UserParser :
     def __init__(self, host, port):
         self.base_url = f"http://{host}:{port}/auth/"
         self.credentials_list = []
+        self.logger = Logger('UserParser')
 
     def generate_data(self):
-        logging.info("Generating user data...")
+        self.logger.info("Generating user data...")
         credentials = generate_name(style='capital')
 
         while credentials in self.credentials_list or len(credentials) > 20:
-            logging.warning("Generated credentials are invalid. Retrying...")
+            self.logger.warning("Generated credentials are invalid. Retrying...")
             credentials = generate_name(style='capital')
 
         self.credentials_list.append(credentials)
@@ -38,53 +41,46 @@ class UserParser :
 
     def sign_up(self, data):
         SIGN_UP_URL = self.base_url + "signup"
-        logging.info("Signing up...")
+        self.logger.info("Signing up...")
 
         try:
             response = requests.post(SIGN_UP_URL, data=data)
             status = response.status_code
-            logging.info(f"Sign up response status code: {status}")
+            self.logger.info(f"Sign up response status code: {status}")
 
             if status >= 300:
-                logging.warning("Failed to sign up: Bad response received from server")
-                logging.info("Response: %s", response.text)
-                logging.info("Retrying...")
+                self.logger.warning("Failed to sign up: Bad response received from server")
+                self.logger.info("Response: %s", response.text)
+                self.logger.info("Retrying...")
             else:
-                logging.info("Signed up successfully.")
+                self.logger.info("Signed up successfully.")
 
             return status
         except Exception as e:
-            logging.error("Failed to sign up: %s", e)
-            logging.info("Exiting with 1...")
-            sys.exit(1)
+            self.logger.error_and_exit(f"Failed to sign up: {e}", 1)
 
     def sign_in(self, login, password):
         SIGN_IN_URL = self.base_url + "signin"
         form_data = {'login': login, 'password': password}
-        logging.info(f"Signing in... [login: {login}, password: {password}]")
+        self.logger.info(f"Signing in... [login: {login}, password: {password}]")
 
         try:
             response = requests.post(SIGN_IN_URL, data=form_data)
             status = response.status_code
-            logging.info(f"Sign in response status code: {status}")
+            self.logger.info(f"Sign in response status code: {status}")
 
             if status >= 300:
-                logging.error("Failed to sign in: Bad response received from server")
-                logging.info("Response: %s", response.text)
-                logging.info("Exiting with 0...")
-                sys.exit(0)
+                self.logger.error_and_exit(f"Failed to sign in: Bad response received from server\nResponse: {response.text}", 0)
 
             response_json = response.json()
-            logging.info("Signed in and received access token successfully.")
+            self.logger.info("Signed in and received access token successfully.")
 
             return response_json['accessToken']
         except Exception as e:
-            logging.error("Failed to sign in: %s", e)
-            logging.info("Exiting with 1...")
-            sys.exit(1)
+            self.logger.error_and_exit(f"Failed to sign in: {e}", 1)
 
     def create_user(self):
-        logging.info('Creating a user...')
+        self.logger.info('Creating a user...')
 
         user_data = self.generate_data()
         status = self.sign_up(user_data)
