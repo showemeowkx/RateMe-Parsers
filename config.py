@@ -1,10 +1,8 @@
 from dotenv import load_dotenv
-import logging
 import sys
 import os
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO)
 
 DEFAULT_CONFIG = {
     "HOST": "localhost",
@@ -72,5 +70,5 @@ try:
     CHANCE = config["CHANCE"]
     
 except ValueError as e:
-    logging.error(f"Configuration error:\n{e}")
+    print(f"Configuration error:\n{e}")
     sys.exit(1)
